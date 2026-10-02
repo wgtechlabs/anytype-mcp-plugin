@@ -103,7 +103,7 @@ node scripts/backup.mjs --self-test # encrypted backup recovery checks
 
 The write smoke check refuses spaces with other names and uses a separate temporary endpoint. Tests use disposable fixtures and no account secrets. See [verification evidence and limits](docs/verification.md).
 
-This project follows [Clean Workflow](CONTRIBUTING.md); agent rules are in [AGENTS.md](AGENTS.md). Build Flow Action runs CI with release and GHCR container publishing enabled on `main`, and no artifact publishing on PR/dev/manual runs. Its direct reference is pinned to a verified commit; upstream transitive action references remain upstream-controlled. Local Docker success does not prove GitHub release execution.
+This project follows [Clean Workflow](CONTRIBUTING.md); agent rules are in [AGENTS.md](AGENTS.md). Build Flow Action runs CI with release and GHCR container publishing enabled on `main`, and no artifact publishing on PR/dev/manual runs. A checksum-pinned Gitleaks CLI scans Git history in the required CI gate without an organization license. The Build Flow reference is pinned to a verified commit; upstream transitive action references remain upstream-controlled. Local Docker success does not prove GitHub release execution.
 
 ## Upstream
 

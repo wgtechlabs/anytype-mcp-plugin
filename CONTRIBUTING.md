@@ -51,12 +51,12 @@ When changing plugin skills, validate their frontmatter and manually test repres
 
 ## Build and release automation
 
-`.github/workflows/build-flow.yml` calls [Build Flow Action](https://github.com/wgtechlabs/build-flow-action) at the verified upstream commit `b46ac3e40de838b87e1da6b3e69382982d080916`. CI installs the lockfile, checks types, runs tests and an npm vulnerability audit, and builds. Gitleaks and CodeQL use the reusable workflow's enabled defaults; container scans fail on findings at the configured threshold.
+`.github/workflows/build-flow.yml` calls [Build Flow Action](https://github.com/wgtechlabs/build-flow-action) at the verified upstream commit `b46ac3e40de838b87e1da6b3e69382982d080916`. CI installs the lockfile, checks types, runs tests and an npm vulnerability audit, and builds. The required setup step runs the checksum-pinned open-source Gitleaks CLI over Git history, replacing the license-dependent Action. CodeQL remains enabled; container scans fail on findings at the configured threshold.
 
 Release and container flows are enabled; npm/package publication is disabled. Pushes to `main` can publish a GHCR image and finalize a GitHub release after the workflow gates pass. Pull requests, `dev`, and manual dispatches do not publish artifacts. The initial supported container target is `linux/amd64`; add other architectures after verifying them.
 
-GHCR and release operations use GitHub's built-in `GITHUB_TOKEN`, with the caller permissions declared in the workflow. No personal token is configured. Repository policy must allow the release commit/tag operations and package publication; do not bypass branch protection with a PAT. An organization using licensed Gitleaks features may need its own configuration.
+GHCR and release operations use GitHub's built-in `GITHUB_TOKEN`, with the caller permissions declared in the workflow. No personal token or Gitleaks license is configured. Repository policy must allow the release commit/tag operations and package publication; do not bypass branch protection with a PAT.
 
-The caller's immutable pin does not freeze the reusable workflow's internal action and nested workflow references. Review those dependencies when updating the pin. This local configuration has not run on GitHub until the repository is published and a workflow executes successfully.
+The caller's immutable pin does not freeze the reusable workflow's internal action and nested workflow references. Review those dependencies when updating the pin. Check the pull request's GitHub Actions results separately from local verification; PR success does not prove release execution.
 
 Keep deployment a separate, explicit action. A release workflow or container publication does not deploy a Railway service.
