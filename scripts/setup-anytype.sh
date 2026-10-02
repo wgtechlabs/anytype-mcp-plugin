@@ -69,10 +69,10 @@ import {parseEnv} from 'node:util';
 const [root,envPath]=process.argv.slice(2);
 let env=fs.existsSync(envPath)?fs.readFileSync(envPath,'utf8'):'';
 const configured={...parseEnv(env),...process.env};
-const key=configured.ANYTYPE_API_KEY??fs.readFileSync(`${root}/secrets/api-key.txt`,'utf8').trim();
+const key=configured.ANYTYPE_API_KEY||fs.readFileSync(`${root}/secrets/api-key.txt`,'utf8').trim();
 function saveMissing(values) {
  for (const [name,value] of Object.entries(values)) {
-  if(!Object.hasOwn(configured,name)) env=`${env}${env.endsWith('\n')||!env?'':'\n'}${name}=${JSON.stringify(value)}\n`;
+  if(!Object.hasOwn(configured,name)||(name==='ANYTYPE_API_KEY'&&!configured[name])) env=`${env}${env.endsWith('\n')||!env?'':'\n'}${name}=${JSON.stringify(value)}\n`;
  }
  fs.writeFileSync(envPath,env,{mode:0o600});fs.chmodSync(envPath,0o600);
 }

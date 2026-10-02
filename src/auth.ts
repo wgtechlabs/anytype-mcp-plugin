@@ -207,7 +207,7 @@ export function installAuth(app: Express, config: AuthConfig): {
     if (token && equal(token, config.mcpToken)) { res.locals.principal = 'owner'; next(); return; }
     // Do not allow the SDK's permissive splitting to accept malformed headers.
     if (!token) req.headers.authorization = undefined;
-    void bearerAuth(req, res, (error) => { if (!error) res.locals.principal = 'owner'; next(error); });
+    void bearerAuth(req, res, (error) => { if (!error) res.locals.principal = `oauth:${req.auth!.clientId}`; next(error); });
   };
   return { requireMcpAuth };
 }

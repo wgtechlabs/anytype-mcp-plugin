@@ -64,12 +64,29 @@ test('configuration defaults fail closed and reject unsafe transport and secret 
   assert.equal(config.allowedSpaces.size, 0);
   for (const override of [
     { MCP_TOKEN: credentials.OWNER_TOKEN }, { OWNER_TOKEN: ' '.repeat(40) }, { MCP_TOKEN: 'x'.repeat(257) },
-    { PUBLIC_URL: 'http://public.example' }, { HOST: '0.0.0.0' },
+    { PUBLIC_URL: 'http://public.example' }, { PUBLIC_URL: 'http://[::1]:31013' }, { HOST: '0.0.0.0' },
     { ANYTYPE_API_URL: 'http://public.example' }, { ANYTYPE_API_URL: 'https://user:password@api.example' },
     { ANYTYPE_API_URL: 'https://api.example/unexpected/path' }, { ANYTYPE_API_VERSION: 'v2' },
   ]) assert.throws(() => readConfig({ ...credentials, ...override }));
   assert.equal(readConfig({ ...credentials, HOST: '0.0.0.0', ALLOW_INSECURE_HTTP: 'true' }).host, '0.0.0.0');
+  assert.equal(readConfig({ ...credentials, ANYTYPE_API_URL: 'http://[::1]:31012' }).apiUrl, 'http://[::1]:31012');
   assert.equal(readConfig({ ...credentials, ANYTYPE_API_VERSION: 'v2', ENABLE_EXPERIMENTAL_V2: 'true' }).apiVersion, 'v2');
+});
+
+test('Railway probe hostname is accepted only for GET healthz and preserves origin checks', async (t) => {
+  const { base, apiState } = await setup(t);
+  const probe = (path: string, method = 'GET', origin?: string) => new Promise<number | undefined>((resolve, reject) => {
+    httpRequest(base + path, { method, headers: { Host: 'healthcheck.railway.app', ...(origin ? { Origin: origin } : {}) } }, response => {
+      response.resume(); resolve(response.statusCode);
+    }).on('error', reject).end();
+  });
+  assert.equal(await probe('/healthz'), 200);
+  assert.equal(await probe('/mcp'), 403);
+  assert.equal(await probe('/authorize'), 403);
+  assert.equal(await probe('/healthz', 'POST'), 403);
+  assert.equal(await probe('/healthz', 'GET', 'https://attacker.example'), 403);
+  apiState.status = 401;
+  assert.equal(await probe('/healthz'), 503);
 });
 
 test('HTTP protects host, origin, credentials and parsing; health reports no private upstream details', async (t) => {

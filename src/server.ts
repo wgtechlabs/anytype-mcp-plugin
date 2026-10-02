@@ -18,7 +18,8 @@ export function createApp(config: Config, upstream: Upstream) {
     if (publicOrigin.protocol === 'https:') res.set('Strict-Transport-Security', 'max-age=31536000');
     // Railway terminates TLS. Canonical Host and Origin checks also prevent DNS rebinding locally.
     const validHosts = new Set([publicOrigin.host, `127.0.0.1:${config.port}`, `localhost:${config.port}`]);
-    if (!validHosts.has(req.get('host') ?? '') || req.get('origin') && req.get('origin') !== publicOrigin.origin) {
+    const railwayHealthcheck = req.method === 'GET' && req.path === '/healthz' && req.get('host') === 'healthcheck.railway.app';
+    if (!(validHosts.has(req.get('host') ?? '') || railwayHealthcheck) || req.get('origin') && req.get('origin') !== publicOrigin.origin) {
       res.status(403).json({ error: 'untrusted_origin' }); return;
     }
     next();

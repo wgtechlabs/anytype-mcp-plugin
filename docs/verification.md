@@ -5,8 +5,9 @@ Local verification on 2026-10-03 (Asia/Manila), with a dedicated sandbox bot and
 | Layer | Evidence | Status |
 | --- | --- | --- |
 | TypeScript | `npm run check` | Passed |
-| Regression suite | `npm test` | 22 tests passed, including real subprocess lifecycle |
-| Authentication | OAuth PKCE, callback/resource binding, consent CSRF, token expiry/rotation/replay/revocation; separate owner and bearer secrets | Automated integration tests |
+| Regression suite | `npm test` | 25 tests passed, including real subprocess lifecycle |
+| Authentication | OAuth PKCE, callback/resource binding, consent CSRF, token expiry/rotation/replay/revocation, client-bound proposals across refresh; separate owner and bearer secrets | Automated integration tests |
+| Setup and readiness regressions | Empty API-key placeholders are filled without changing denied space access or rotated keys; Railway probe Host is accepted only for `GET /healthz`; unsupported HTTP IPv6 issuers fail config validation | Automated tests; full setup also checked against the isolated native bot using a temporary copied example configuration |
 | MCP gateway | Real HTTP protocol initialization/discovery, validation, scope restrictions, read-only, frozen proposals, duplicate scans, conflicts, expiry/replay, sanitized errors | Automated integration tests |
 | Dependency audit | Pinned dependencies and rebuilt upstream entrypoint with patched Axios | No reported vulnerabilities at verification time |
 | Native Anytype | Pinned v0.4.0 checksum; new bot; sandbox and welcome note; API authenticated | Passed |

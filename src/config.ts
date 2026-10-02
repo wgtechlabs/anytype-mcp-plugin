@@ -20,6 +20,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env) {
   }).parse(env);
   const publicUrl = new URL(schema.PUBLIC_URL);
   const apiUrl = new URL(schema.ANYTYPE_API_URL);
+  if (publicUrl.protocol === 'http:' && publicUrl.hostname === '[::1]') throw new Error('HTTP IPv6 PUBLIC_URL is unsupported by the OAuth SDK. Use http://127.0.0.1 or HTTPS.');
   for (const url of [publicUrl, apiUrl]) {
     if (url.username || url.password || url.search || url.hash || url.pathname !== '/') throw new Error('Service URLs must be origins without credentials, paths or query strings.');
     if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback(url))) throw new Error('HTTPS is required except on loopback.');

@@ -48,6 +48,8 @@ Set these values explicitly in the service settings and reusable template before
 
 Apply these settings in Railway's service and template editor. An image deployment does not read source-repository configuration or build the Dockerfile. Add the volume explicitly: the Docker `VOLUME` declaration does not provision a Railway volume.
 
+The gateway accepts Railway's `healthcheck.railway.app` hostname only for `GET /healthz`. MCP and OAuth requests must use the configured service hostname.
+
 Keep one instance per volume. Railway [does not support replicas with volumes](https://docs.railway.com/volumes/reference#caveats), and redeploying a volume-backed service has brief downtime even with a healthcheck.
 
 Configure:
