@@ -62,7 +62,7 @@ The gateway reuses the official `@anyproto/anytype-mcp` schemas and implementati
 
 **Default: `READ_ONLY=true`.** Native mutation tools only prepare a five-minute preview and return a `proposal_id`. They never write immediately. After reviewing the exact proposal in the conversation, explicitly approve `apply_change`. To permit execution, the owner must set `READ_ONLY=false` and restart.
 
-The server enforces space restrictions, frozen single-use proposals, duplicate checks, and a fresh read before updates. It does **not** prove that a human clicked approval: skills, MCP annotations, and `confirmed: true` are not security boundaries. Use a client that prompts for `apply_change`; keep read-only mode when that approval control is unavailable. Document contents cannot authorize tools.
+The server enforces space restrictions, frozen single-use proposals, duplicate checks, and a fresh read before updates. OAuth proposals belong to the client that prepared them, including after token refresh; connections using the same static `MCP_TOKEN` share one proposal identity. It does **not** prove that a human clicked approval: skills, MCP annotations, and `confirmed: true` are not security boundaries. Use a client that prompts for `apply_change`; keep read-only mode when that approval control is unavailable. Document contents cannot authorize tools.
 
 Stable v1 has no atomic `If-Match` support. The gateway serializes its writes and checks the latest snapshot, but another desktop client can still edit between that check and the write. Avoid concurrent editing of the same object. Unknown write outcomes are never retried automatically; read back before deciding what to do.
 
@@ -77,7 +77,7 @@ Copy [.env.example](.env.example) for the supported settings. Main variables:
 | `READ_ONLY` | `true` by default; only `false` enables confirmed writes |
 | `MCP_TOKEN` | Random 32–256 character bearer token for MCP clients |
 | `OWNER_TOKEN` | Different random secret used only for OAuth sign-in |
-| `PUBLIC_URL` | Canonical service origin; HTTPS outside local development |
+| `PUBLIC_URL` | Canonical HTTPS origin; local HTTP supports `localhost` or `127.0.0.1` |
 | `OAUTH_REDIRECT_URIS` | Exact OAuth callback allowlist |
 | `HOST`, `PORT` | Default `127.0.0.1:31013`; Railway binds `0.0.0.0:$PORT` |
 | `ANYTYPE_API_VERSION` | `v1` by default; `v2` requires `ENABLE_EXPERIMENTAL_V2=true` |

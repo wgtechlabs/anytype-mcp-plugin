@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { test, type TestContext } from 'node:test';
 import express from 'express';
 import { installAuth } from '../src/auth.js';
+import { Gateway, result } from '../src/gateway.js';
 
 const mcpToken = 'm'.repeat(48);
 const ownerToken = 'o'.repeat(48);
@@ -103,6 +104,53 @@ test('OAuth flow enforces PKCE, client, audience, callback, one-use codes, refre
   const second = await (await exchange(client.client_id, secondGrant.code, secondGrant.verifier)).json();
   assert.equal((await form('/revoke', { client_id: client.client_id, token: second.access_token })).status, 200);
   assert.equal((await request('/mcp', { headers: { Authorization: `Bearer ${second.access_token}` } })).status, 401);
+});
+
+test('verified OAuth client identity isolates proposals and remains stable through refresh', async (t) => {
+  const { request, form, register, grant, exchange, base } = await setup(t);
+  async function connectClient() {
+    const client = await register();
+    const authorization = await grant(client.client_id);
+    const response = await exchange(client.client_id, authorization.code, authorization.verifier);
+    assert.equal(response.status, 200);
+    return { ...client, ...await response.json() };
+  }
+  async function principal(token: string): Promise<string> {
+    const response = await request('/mcp', { headers: { Authorization: `Bearer ${token}` } });
+    assert.equal(response.status, 200);
+    return (await response.json()).principal;
+  }
+  const first = await connectClient();
+  const second = await connectClient();
+  const firstPrincipal = await principal(first.access_token);
+  const secondPrincipal = await principal(second.access_token);
+  assert.equal(firstPrincipal, `oauth:${first.client_id}`);
+  assert.equal(secondPrincipal, `oauth:${second.client_id}`);
+  assert.notEqual(firstPrincipal, secondPrincipal);
+  assert.notEqual(firstPrincipal, await principal(mcpToken));
+  const refreshed = await form('/token', { grant_type: 'refresh_token', client_id: first.client_id, refresh_token: first.refresh_token, resource: base + '/mcp' });
+  assert.equal(refreshed.status, 200);
+  const refreshedPrincipal = await principal((await refreshed.json()).access_token);
+  assert.equal(refreshedPrincipal, firstPrincipal);
+
+  let writes = 0;
+  const gateway = new Gateway({
+    tools: ['API-get-object', 'API-update-object'].map(name => ({ name, inputSchema: {
+      type: 'object', properties: { space_id: { type: 'string' }, object_id: { type: 'string' }, name: { type: 'string' } }, required: ['space_id', 'object_id'],
+    } })),
+    async call(name) { if (name === 'API-update-object') writes++; return result({ object: { id: 'object1', name: 'Original' } }); },
+  }, { allowedSpaces: new Set(['approved']), readOnly: false, apiVersion: 'v1' });
+  const preview = await gateway.call('API-update-object', { space_id: 'approved', object_id: 'object1', name: 'Reviewed' }, firstPrincipal);
+  assert(!preview.isError);
+  const applyArgs = { proposal_id: preview.structuredContent!.proposal_id, confirmed: true };
+  for (const otherPrincipal of [secondPrincipal, await principal(mcpToken)]) {
+    const denied = await gateway.call('apply_change', applyArgs, otherPrincipal);
+    assert.equal(denied.isError, true);
+    assert.equal((denied.structuredContent!.error as { code: string }).code, 'proposal_expired');
+  }
+  assert.equal(writes, 0);
+  assert.equal((await gateway.call('apply_change', applyArgs, refreshedPrincipal)).structuredContent!.applied, true);
+  assert.equal(writes, 1);
 });
 
 test('callbacks are exact allowlist entries and consent requires origin, browser binding and owner secret', async (t) => {
