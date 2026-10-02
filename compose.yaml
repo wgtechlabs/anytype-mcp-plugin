@@ -1,0 +1,19 @@
+services:
+  anytype-mcp-plugin:
+    build: .
+    environment:
+      NODE_ENV: development
+      ALLOW_INSECURE_HTTP: "true"
+      PUBLIC_URL: http://127.0.0.1:31014
+      PORT: "31013"
+      MCP_TOKEN: ${MCP_TOKEN:?Set MCP_TOKEN in .env}
+      OWNER_TOKEN: ${OWNER_TOKEN:?Set OWNER_TOKEN in .env}
+      READ_ONLY: "true"
+    ports:
+      - "127.0.0.1:31014:31013"
+    volumes:
+      - anytype-data:/data
+    stop_grace_period: 45s
+    restart: unless-stopped
+volumes:
+  anytype-data:

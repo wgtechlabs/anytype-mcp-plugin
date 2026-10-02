@@ -1,0 +1,10 @@
+.git
+.agents
+.local
+.env
+.env.*
+node_modules
+dist
+backups
+*.log
+web

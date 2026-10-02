@@ -1,0 +1,10 @@
+{
+  "name": "anytype-mcp-plugin",
+  "interface": { "displayName": "Anytype MCP Plugin" },
+  "plugins": [{
+    "name": "anytype-mcp-plugin",
+    "source": { "source": "local", "path": "./plugin" },
+    "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+    "category": "Productivity"
+  }]
+}

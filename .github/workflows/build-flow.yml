@@ -1,0 +1,52 @@
+name: Build Flow
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: write
+  security-events: write
+  actions: read
+
+concurrency:
+  group: build-flow-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    # Upstream main verified 2026-10-02. Review this revision before updating it.
+    uses: wgtechlabs/build-flow-action/.github/workflows/app.yml@b46ac3e40de838b87e1da6b3e69382982d080916
+    with:
+      enable-package: false
+      enable-container: true
+      enable-release: true
+      main-branch: main
+      dev-branch: dev
+      ci-profile: node
+      ci-runtime-version: '22'
+      ci-install-command: npm ci
+      ci-typecheck-command: npm run check
+      ci-test-command: npm test && npm audit --audit-level=high
+      ci-build-command: npm run build
+      codeql-languages: javascript-typescript
+      publish-pr-artifacts: false
+      publish-dev-artifacts: false
+      publish-manual-artifacts: false
+      container-registry: ghcr
+      container-image-name: anytype-mcp-plugin
+      container-dockerfile: ./Dockerfile
+      container-context: .
+      container-platforms: linux/amd64
+      container-release-platforms: linux/amd64
+      container-pr-comment-enabled: false
+      container-vulnerability-comment-enabled: false
+      container-fail-on-vulnerability: true
+      release-commit-convention: clean-commit
+      release-initial-version: 0.1.0
+    # GHCR and releases use the built-in GITHUB_TOKEN; no PAT is required.
