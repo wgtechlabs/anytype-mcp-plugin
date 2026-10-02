@@ -1,0 +1,43 @@
+{
+  "name": "anytype-mcp-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Connect a headless Anytype workspace to Codex and ChatGPT through MCP",
+  "engines": {
+    "node": ">=22.16"
+  },
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --import tsx src/index.ts",
+    "build": "tsc && esbuild node_modules/@anyproto/anytype-mcp/scripts/start-server.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/upstream.mjs",
+    "start": "node --env-file-if-exists=.env dist/src/index.js",
+    "check": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "smoke": "node --env-file-if-exists=.env scripts/smoke.mjs",
+    "verify": "npm run check && npm test && npm audit --omit=dev",
+    "smoke:writes": "node --env-file-if-exists=.env scripts/smoke-writes.mjs --sandbox",
+    "pretest": "npm run build"
+  },
+  "dependencies": {
+    "@anyproto/anytype-mcp": "2.0.1",
+    "@modelcontextprotocol/sdk": "1.31.0",
+    "ajv": "8.20.0",
+    "express": "5.2.1",
+    "express-rate-limit": "8.7.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.6",
+    "@types/node": "26.6.4",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  },
+  "overrides": {
+    "axios": "1.20.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wgtechlabs/anytype-mcp-plugin.git"
+  }
+}

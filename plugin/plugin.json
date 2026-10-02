@@ -1,0 +1,22 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "anytype-mcp-plugin",
+  "version": "0.1.0",
+  "description": "Search and read Anytype spaces, then propose reviewed changes through an authenticated MCP bridge.",
+  "keywords": ["anytype", "notes", "tasks", "knowledge-management"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Anytype MCP Plugin",
+        "shortDescription": "Search Anytype and review proposed changes",
+        "category": "Productivity",
+        "capabilities": ["Read", "Write"],
+        "defaultPrompt": [
+          "Find notes in my Anytype workspace about this topic.",
+          "Draft a note in Anytype and show me the proposed change.",
+          "Review my Anytype tasks in the space I select."
+        ]
+      }
+    }
+  }
+}
