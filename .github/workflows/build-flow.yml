@@ -22,6 +22,7 @@ jobs:
   build:
     # Upstream main verified 2026-10-02. Review this revision before updating it.
     uses: wgtechlabs/build-flow-action/.github/workflows/app.yml@b46ac3e40de838b87e1da6b3e69382982d080916
+    secrets: inherit
     with:
       enable-package: false
       enable-container: true
@@ -48,7 +49,7 @@ jobs:
       publish-pr-artifacts: false
       publish-dev-artifacts: false
       publish-manual-artifacts: false
-      container-registry: ghcr
+      container-registry: both
       container-image-name: anytype-mcp-plugin
       container-dockerfile: ./Dockerfile
       container-context: .
@@ -59,4 +60,5 @@ jobs:
       container-fail-on-vulnerability: true
       release-commit-convention: clean-commit
       release-initial-version: 0.1.0
-    # GHCR and releases use the built-in GITHUB_TOKEN; no PAT is required.
+    # GHCR/releases use GITHUB_TOKEN. Docker Hub needs DOCKER_HUB_USERNAME
+    # and DOCKER_HUB_ACCESS_TOKEN repository or organization secrets.

@@ -86,9 +86,11 @@ v2 is an explicit experimental **read-only adapter**, using the upstream v2 sche
 
 ## Railway template and container
 
-The project includes a [Dockerfile](Dockerfile), [Railway configuration](railway.json), and local [Compose configuration](compose.yaml). Both the CLI and MCP server run in one service; the Anytype API remains on loopback. Mount one persistent volume at `/data`, use one replica, and expose only the MCP port through Railway's HTTPS domain.
+Railway uses a prebuilt release image from **Docker Hub** (`docker.io/wgtechlabs/anytype-mcp-plugin`) or **GHCR** (`ghcr.io/wgtechlabs/anytype-mcp-plugin`). After the first successful publication, select a verified release tag or immutable digest when creating the Docker Image service. No published tag or digest is assumed yet. The [Dockerfile](Dockerfile) and local [Compose configuration](compose.yaml) remain available for building and testing locally.
 
-See [Railway template setup](docs/railway.md) for variables, volume, first boot, connecting an existing space, and publishing a reusable template. No deployment or marketplace publication happens from local setup.
+Both the CLI and MCP server run in one service; the Anytype API remains on loopback. Set `/healthz` with a 180-second timeout, On Failure with 5 retries, one replica, and a persistent `/data` volume in Railway. Expose only the MCP port through its HTTPS domain.
+
+See [Railway image and template setup](docs/railway.md) for image references, required service settings, variables, first boot, and template publication. Local setup does not deploy or publish anything.
 
 Anytype's local indexes are not fully encrypted at rest. Use an encrypted host/volume and [encrypted backups](docs/anytype-runtime.md). Volume persistence is not a backup. Backup and restore require the bot to be stopped and restoration targets an empty directory.
 
@@ -103,7 +105,7 @@ node scripts/backup.mjs --self-test # encrypted backup recovery checks
 
 The write smoke check refuses spaces with other names and uses a separate temporary endpoint. Tests use disposable fixtures and no account secrets. See [verification evidence and limits](docs/verification.md).
 
-This project follows [Clean Workflow](CONTRIBUTING.md); agent rules are in [AGENTS.md](AGENTS.md). Build Flow Action runs CI with release and GHCR container publishing enabled on `main`, and no artifact publishing on PR/dev/manual runs. A checksum-pinned Gitleaks CLI scans Git history in the required CI gate without an organization license. The Build Flow reference is pinned to a verified commit; upstream transitive action references remain upstream-controlled. Local Docker success does not prove GitHub release execution.
+This project follows [Clean Workflow](CONTRIBUTING.md); agent rules are in [AGENTS.md](AGENTS.md). Build Flow Action runs CI with releases and container publishing to **Docker Hub and GHCR** enabled on `main`, and no artifact publishing on PR/dev/manual runs. Releases and GHCR use the built-in `GITHUB_TOKEN` by default; Docker Hub uses the inherited organization or repository credentials described in [Contributing](CONTRIBUTING.md). A checksum-pinned Gitleaks CLI scans Git history in the required CI gate without an organization license. The Build Flow reference is pinned to a verified commit; upstream transitive action references remain upstream-controlled. Local Docker success does not prove GitHub release execution.
 
 ## Upstream
 

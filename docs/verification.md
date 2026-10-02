@@ -13,6 +13,7 @@ Local verification on 2026-10-03 (Asia/Manila), with a dedicated sandbox bot and
 | Experimental v2 | Live schema discovery, approved space selection, search, and no mutation tools | Passed; read-only |
 | Live MCP reads | `npm run smoke`; 26 tools, auth/search/read/types/properties/scope and invalid-ID rejection | Passed |
 | Container | Docker build; isolated volume bootstrap; same smoke before and after container restart | Passed locally |
+| Railway image architecture | Explicit `linux/amd64` build and runtime (`linux/x64`) under Docker Desktop emulation; fresh isolated bot, `/healthz`, and 26-tool read-only smoke; test container stopped and volume retained | Passed locally |
 | Recovery | Encrypted snapshot restored into empty directory; restored bot authenticated and found sandbox/welcome note; original runtime restarted | Passed locally |
 | Backup negative cases | Wrong passphrase, tampering, running instance, nonempty restore path | Passed self-check |
 | Plugin package | Six SKILL.md validators, portable plugin and MCP JSON schemas | Passed |
