@@ -44,6 +44,7 @@ jobs:
       ci-test-command: npm test && npm audit --audit-level=high
       ci-build-command: npm run build
       codeql-languages: javascript-typescript
+      codeql-build-mode: none
       publish-pr-artifacts: false
       publish-dev-artifacts: false
       publish-manual-artifacts: false
