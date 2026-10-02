@@ -1,0 +1,12 @@
+# Example only: merge into the desired Codex configuration after local setup.
+# MCP_TOKEN must be in the environment of the process that starts Codex.
+# It is the bridge token, never the Anytype API key.
+[mcp_servers.anytype]
+url = "http://127.0.0.1:31013/mcp"
+bearer_token_env_var = "MCP_TOKEN"
+default_tools_approval_mode = "writes"
+startup_timeout_sec = 20
+tool_timeout_sec = 60
+
+[mcp_servers.anytype.tools.apply_change]
+approval_mode = "prompt"

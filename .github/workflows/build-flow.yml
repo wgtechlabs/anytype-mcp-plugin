@@ -1,0 +1,64 @@
+name: Build Flow
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: write
+  security-events: write
+  actions: read
+
+concurrency:
+  group: build-flow-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    # Upstream main verified 2026-10-02. Review this revision before updating it.
+    uses: wgtechlabs/build-flow-action/.github/workflows/app.yml@b46ac3e40de838b87e1da6b3e69382982d080916
+    secrets: inherit
+    with:
+      enable-package: false
+      enable-container: true
+      enable-release: true
+      # Run the open-source CLI below; the upstream Action requires an org license.
+      enable-gitleaks: false
+      main-branch: main
+      dev-branch: dev
+      ci-profile: node
+      ci-runtime-version: '22'
+      ci-setup-command: |
+        scan_dir="$(mktemp -d)"
+        trap 'rm -rf "$scan_dir"' EXIT
+        curl --fail --silent --show-error --location https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz --output "$scan_dir/gitleaks.tar.gz"
+        printf '%s  %s\n' '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb' "$scan_dir/gitleaks.tar.gz" | sha256sum --check --status
+        tar -xzf "$scan_dir/gitleaks.tar.gz" -C "$scan_dir" gitleaks
+        "$scan_dir/gitleaks" git --redact --log-opts=--all .
+      ci-install-command: npm ci
+      ci-typecheck-command: npm run check
+      ci-test-command: npm test && npm audit --audit-level=high
+      ci-build-command: npm run build
+      codeql-languages: javascript-typescript
+      codeql-build-mode: none
+      publish-pr-artifacts: false
+      publish-dev-artifacts: false
+      publish-manual-artifacts: false
+      container-registry: both
+      container-image-name: anytype-mcp-plugin
+      container-dockerfile: ./Dockerfile
+      container-context: .
+      container-platforms: linux/amd64
+      container-release-platforms: linux/amd64
+      container-pr-comment-enabled: false
+      container-vulnerability-comment-enabled: false
+      container-fail-on-vulnerability: true
+      release-commit-convention: clean-commit
+      release-initial-version: 0.1.0
+    # GHCR/releases use GITHUB_TOKEN. Docker Hub needs DOCKER_HUB_USERNAME
+    # and DOCKER_HUB_ACCESS_TOKEN repository or organization secrets.
