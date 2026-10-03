@@ -1,6 +1,6 @@
 # Anytype runtime
 
-`scripts/setup-anytype.sh` downloads the official Anytype CLI **v0.4.0**, verifies the release archive against its pinned SHA-256, starts it on loopback, and creates a dedicated bot. With no invite or explicit allowlist, it initializes an **Anytype MCP Sandbox** space with a welcome note. Run from the repository after `npm ci`:
+`scripts/setup-anytype.sh` downloads the official Anytype CLI **v0.4.0**, verifies the release archive against its pinned SHA-256, starts it on loopback, and creates a dedicated bot. With no invite or explicit allowlist, it initializes an **Anytype MCP Sandbox** space with a welcome note. The container instead uses a [pinned security rebuild](../docker/anytype-cli/README.md), identified as `v0.4.0-security.1-dirty`; the native installer still downloads Anytype's unmodified release and does not apply those Go dependency fixes. Run from the repository after `npm ci`:
 
 ```sh
 scripts/setup-anytype.sh
@@ -17,7 +17,7 @@ The wrapper passes a separate home and `DATA_PATH` only to the child CLI. On mac
 
 CLI v0.4.0 supports the default Anytype Network and a custom network configuration; it does **not** provide a local-only network flag. “Local” here describes where the service and storage run. The bot can participate in encrypted Anytype Network sync. For a self-hosted Any-Sync network, set `ANYTYPE_NETWORK_CONFIG` to its YAML path **before the first account creation**. Desktop and bot must use the same network.
 
-Desktop recovery mnemonics cannot log in to the bot CLI. The bot is a separate identity. To connect an existing space, create an invitation in Anytype and privately set `ANYTYPE_INVITE_LINK` in `.env` before local setup, or in service variables before container startup. **This bootstrap behavior is unreleased and unavailable in image `0.1.0`.** Existing deployments and the saved Railway template draft need a newer verified release containing it.
+Desktop recovery mnemonics cannot log in to the bot CLI. The bot is a separate identity. To connect an existing space, create an invitation in Anytype and privately set `ANYTYPE_INVITE_LINK` in `.env` before local setup, or in service variables before container startup. **Invitation setup is available from `0.2.0`; `0.1.0` lacks it.** The published `0.2.0` image has unresolved scan findings. Use a newer verified security release for production.
 
 Accepted links include `https://<host>/invite/<cid>#<key>` and `anytype://invite/?cid=<cid>&key=<key>`. The pinned CLI also accepts the HTTP web form. Use the original Anytype-generated CID: bootstrap accepts the pinned generator's lowercase base32 CIDv1 format and rejects alternate CID encodings. Quote the value in `.env` to preserve the `#key` fragment; use the raw complete link in Railway's variable field. An invite grants access: never commit it, paste it into chat, or put it in shared logs or shell history. Normal Railway setup uses a private variable rather than a terminal command.
 
