@@ -35,7 +35,7 @@ NODE
 fi
 node --input-type=module - "$binary" <<'NODE'
 import {execFileSync} from 'node:child_process';
-if(!/^anytype-cli v0\.4\.0(?:\s|$)/m.test(execFileSync(process.argv[2],['version'],{encoding:'utf8'}))) throw Error('Expected pinned Anytype CLI v0.4.0; refuse to reuse another version.');
+if(!/^anytype-cli v0\.4\.0(?:-security\.1-dirty)?(?:\s|$)/m.test(execFileSync(process.argv[2],['version'],{encoding:'utf8'}))) throw Error('Expected Anytype CLI v0.4.0 or the pinned container rebuild v0.4.0-security.1-dirty; refuse to reuse another version.');
 NODE
 if [[ "${1:-}" == --download-only ]]; then exit 0; fi
 node "$project_dir/scripts/bootstrap-anytype.mjs" "$runtime_dir" "${ANYTYPE_ENV_FILE:-$project_dir/.env}" --validate-invite

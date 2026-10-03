@@ -1,12 +1,12 @@
 # Railway template preparation
 
-Deploy a verified release image from Docker Hub or GHCR on Railway. Image `0.1.0` is published in both registries; a live Railway deployment has not yet been verified. Codex and ChatGPT provide the interface; the container hosts the MCP gateway and headless Anytype. The repository also includes a Dockerfile and Compose configuration for local builds.
+Deploy a verified release image from Docker Hub or GHCR on Railway. Image `0.2.0` is published in both registries, but its container scan failed. The hardening described here requires a new release with passing checks; a live Railway deployment has not yet been verified. Codex and ChatGPT provide the interface; the container hosts the MCP gateway and headless Anytype. The repository also includes a Dockerfile and Compose configuration for local builds.
 
-**Invite bootstrap is unreleased.** Image `0.1.0` does not support `ANYTYPE_INVITE_LINK`. The saved Railway template draft is pinned to `0.1.0`; update its image only after a release containing this feature is published and verified. Adding the variable to that older image will not join a space.
+**Invitation setup is available from `0.2.0`.** The saved template draft uses that release and remains evaluation-only. Before production use, select a new image with the security fixes and verify its deployment. Image `0.1.0` does not support `ANYTYPE_INVITE_LINK`.
 
 ## Container architecture
 
-One container runs one pinned Anytype CLI v0.4.0 bot and one Node 22 gateway. Anytype listens only on container loopback at 31012; only the gateway port is exposed. `/data` contains the private CLI home, object data, recovery material, API key, gateway configuration, and invitation attempt state. Without an invite or explicit space allowlist, first start creates a dedicated sandbox and test note. Later starts reuse the volume. Startup verifies tokens before creating an account, and no secret is printed to container logs. The entrypoint initializes volume ownership as root, then runs both services as the unprivileged `node` user. Shutdown stops both processes.
+One container runs a pinned Anytype CLI v0.4.0 security rebuild and one Node 22 gateway. See [the rebuild and its provenance](../docker/anytype-cli/README.md). Anytype listens only on container loopback at 31012; only the gateway port is exposed. `/data` contains the private CLI home, object data, recovery material, API key, gateway configuration, and invitation attempt state. Without an invite or explicit space allowlist, first start creates a dedicated sandbox and test note. Later starts reuse the volume. Startup verifies tokens before creating an account, and no secret is printed to container logs. The image defaults to the unprivileged `node` user (UID 1000). On Railway, `RAILWAY_RUN_UID=0` lets the entrypoint initialize the root-owned volume before dropping privileges; the supervisor and both services then run as `node`. Shutdown stops both processes.
 
 The official CLI does not offer a local-only network flag. Its bot uses encrypted Anytype Network sync unless a valid custom network YAML is supplied at first account creation. This is separate from the hosting location.
 
@@ -34,7 +34,7 @@ Compose explicitly sets `ALLOW_INSECURE_HTTP=true` because the process binds ins
 
 ## Railway service and template settings
 
-After the first successful image publication, create a Railway service with **Docker Image** as its source and choose either registry:
+After verifying a release with passing container checks, create a Railway service with **Docker Image** as its source and choose either registry:
 
 | Registry | Image reference |
 | --- | --- |
@@ -57,7 +57,11 @@ Set these values explicitly in the service settings and reusable template before
 
 Apply these settings in Railway's service and template editor. An image deployment does not read source-repository configuration or build the Dockerfile. Add the volume explicitly: the Docker `VOLUME` declaration does not provision a Railway volume.
 
+The image also includes a bounded loopback Docker healthcheck, with a 180-second startup grace period. It checks the gateway and authenticated upstream readiness continuously; retain Railway's separate deployment healthcheck.
+
 The gateway accepts Railway's `healthcheck.railway.app` hostname only for `GET /healthz`. MCP and OAuth requests must use the configured service hostname.
+
+Railway [creates volumes owned by root](https://docs.railway.com/volumes#permissions); build-time ownership cannot change a fresh mounted volume. Set `RAILWAY_RUN_UID=0` when deploying this non-root image. For local Docker named volumes, leave the image's default user unchanged. Bind mounts must be writable by UID 1000, or explicitly use the same root initializer. Run backup and restore commands as `node`, including with `docker exec --user node`, so restored files keep the correct ownership.
 
 Keep one instance per volume. Railway [does not support replicas with volumes](https://docs.railway.com/volumes/reference#caveats), and redeploying a volume-backed service has brief downtime even with a healthcheck.
 
@@ -69,8 +73,9 @@ Configure:
 | `OWNER_TOKEN` | A different unique random secret, at least 32 characters |
 | `PUBLIC_URL` | The external HTTPS origin, or omit when `RAILWAY_PUBLIC_DOMAIN` is configured |
 | `READ_ONLY` | `true` initially |
+| `RAILWAY_RUN_UID` | `0` for Railway volume initialization; the entrypoint drops to UID 1000 before starting the supervisor and services |
 | `PORT` | Railway-provided port or `31013` |
-| `ANYTYPE_INVITE_LINK` | Optional private invite, supplied before deployment; requires a release newer than `0.1.0` containing invite bootstrap |
+| `ANYTYPE_INVITE_LINK` | Optional private invite, supplied before deployment; available from `0.2.0` |
 | `ANYTYPE_ALLOWED_SPACES` | Optional explicit full IDs; omit for automatic invite target or sandbox access. Explicitly empty denies all |
 | `ANYTYPE_API_VERSION` | `v1` by default |
 | `OAUTH_REDIRECT_URIS` | Exact client callback URLs when configuring OAuth clients |

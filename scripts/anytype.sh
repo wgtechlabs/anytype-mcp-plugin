@@ -31,7 +31,7 @@ const occupied = port => new Promise(resolve => {
   socket.on('error', () => resolve(false));
   socket.on('timeout', () => {socket.destroy(); resolve(false);});
 });
-function running() {
+function running(afterStop = false) {
   if (!fs.existsSync(pidPath)) return null;
   const pid = Number(fs.readFileSync(pidPath, 'utf8'));
   if (!Number.isSafeInteger(pid) || pid < 2) throw Error('Invalid runtime PID file.');
@@ -39,7 +39,12 @@ function running() {
     process.kill(pid, 0);
     const command = execFileSync('ps', ['-p', String(pid), '-o', 'stat=', '-o', 'command='], {encoding:'utf8'}).trim();
     if (command.startsWith('Z')) return null;
-    if (!command.includes(binary) || !command.includes('serve')) throw Error('Runtime PID belongs to another process; refusing to use it.');
+    if (!command.includes(binary) || !command.includes('serve')) {
+      // After signaling a verified process, an exiting command or reused PID
+      // means our process is gone. Never send another signal to that PID.
+      if (afterStop) return null;
+      throw Error('Runtime PID belongs to another process; refusing to use it.');
+    }
     return pid;
   } catch (error) {
     if (error.code === 'ESRCH' || error.status === 1) return null;
@@ -55,8 +60,8 @@ try {
   if (action === 'stop') {
     if (pid) {
       process.kill(pid, 'SIGTERM');
-      for (let i=0; i<100 && running(); i++) await sleep(100);
-      if (running()) throw Error('Anytype has not stopped; no forced termination attempted.');
+      for (let i=0; i<100 && running(true); i++) await sleep(100);
+      if (running(true)) throw Error('Anytype has not stopped; no forced termination attempted.');
     }
     fs.rmSync(pidPath, {force:true});
     console.log('Anytype stopped.');
