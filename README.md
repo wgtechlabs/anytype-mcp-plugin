@@ -30,7 +30,7 @@ Keep the bot recovery file in `.local/secrets/` backed up securely. Do not commi
 
 The bot is a separate Anytype identity. It does **not** automatically see your desktop data, and cannot sign in using a desktop recovery phrase.
 
-**Invite bootstrap is unreleased and is not available in image `0.1.0`.** Use a local build containing this change, or a later verified release. The saved Railway template draft remains pinned to `0.1.0` until it is deliberately updated after that release.
+**Invitation setup is available from `0.2.0`.** That published image has unresolved container scan findings. The security hardening in this branch requires a new verified image release before updating hosted deployments.
 
 1. In Anytype desktop, create an invitation for the space you want the bot to access.
 2. Privately set `ANYTYPE_INVITE_LINK` in local `.env` before running setup, or in Railway service variables before deployment. Quote the value in `.env` to preserve the `#key` fragment; paste the raw full link into Railway's variable field. Never paste it into chat, Git, or shared logs.
@@ -77,7 +77,7 @@ Copy [.env.example](.env.example) for the supported settings. Main variables:
 | Variable | Purpose |
 | --- | --- |
 | `ANYTYPE_API_KEY` | Bot's private server-side API key |
-| `ANYTYPE_INVITE_LINK` | Optional private invitation for startup join; unreleased, unavailable in `0.1.0` |
+| `ANYTYPE_INVITE_LINK` | Optional private invitation for startup join; available from `0.2.0` |
 | `ANYTYPE_ALLOWED_SPACES` | Explicit approved IDs; empty denies all. Omit for automatic invite target or sandbox access |
 | `READ_ONLY` | `true` by default; only `false` enables confirmed writes |
 | `MCP_TOKEN` | Random 32–256 character bearer token for MCP clients |
@@ -91,9 +91,9 @@ v2 is an explicit experimental **read-only adapter**, using the upstream v2 sche
 
 ## Railway template and container
 
-Railway uses a prebuilt release image from **Docker Hub** (`docker.io/wgtechlabs/anytype-mcp-plugin`) or **GHCR** (`ghcr.io/wgtechlabs/anytype-mcp-plugin`). After the first successful publication, select a verified release tag or immutable digest when creating the Docker Image service. No published tag or digest is assumed yet. The [Dockerfile](Dockerfile) and local [Compose configuration](compose.yaml) remain available for building and testing locally.
+Railway uses a prebuilt release image from **Docker Hub** (`docker.io/wgtechlabs/anytype-mcp-plugin`) or **GHCR** (`ghcr.io/wgtechlabs/anytype-mcp-plugin`). Select a release tag or immutable digest whose build and security checks passed. The published `0.2.0` image has unresolved scan findings; these changes do not update that image. The [Dockerfile](Dockerfile) and local [Compose configuration](compose.yaml) remain available for building and testing locally.
 
-Both the CLI and MCP server run in one service; the Anytype API remains on loopback. Set `/healthz` with a 180-second timeout, On Failure with 5 retries, one replica, and a persistent `/data` volume in Railway. Expose only the MCP port through its HTTPS domain.
+Both the CLI and MCP server run in one service; the Anytype API remains on loopback. Set `/healthz` with a 180-second timeout, On Failure with 5 retries, one replica, and a persistent `/data` volume in Railway. Expose only the MCP port through its HTTPS domain. With the non-root image, set `RAILWAY_RUN_UID=0` so the initializer can prepare Railway's root-owned volume; it drops privileges before starting the supervisor or services.
 
 See [Railway image and template setup](docs/railway.md) for image references, required service settings, variables, first boot, and template publication. Local setup does not deploy or publish anything.
 
