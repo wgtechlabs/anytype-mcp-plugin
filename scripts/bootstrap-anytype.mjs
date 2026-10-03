@@ -6,12 +6,10 @@ import { parseEnv } from 'node:util';
 
 const [root, envPath, mode] = process.argv.slice(2);
 const statePath = join(root, 'secrets/invite-state.json');
+const lockPath = join(root, 'bootstrap.lock');
 const managedPrefix = '# ANYTYPE_INVITE_MANAGED_SPACE=';
 const spaceIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,511}$/;
-let env = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
-const fileSettings = parseEnv(env);
-const configured = { ...fileSettings, ...process.env };
-const invite = (configured.ANYTYPE_INVITE_LINK ?? '').trim();
+let env, fileSettings, configured, invite;
 
 function parseInvite() {
   if (!invite) return;
@@ -164,7 +162,19 @@ async function bootstrap(invitation, attempts) {
   console.log('Verified API authentication, sandbox space, and persisted test note. Gateway configuration saved privately.');
 }
 
+let ownsLock = false;
 try {
+  // mkdir is atomic across processes. Acquire before reading any shared configuration/history.
+  // Never guess that a lock is stale: a timed-out process or its CLI child may still be writing.
+  try { fs.mkdirSync(lockPath, { mode: 0o700 }); } catch (error) {
+    if (error.code === 'EEXIST') throw Error('Unable to acquire bootstrap lock; another setup owns this runtime. Wait for it to finish. After an interrupted setup, stop all services and setup/CLI processes using this runtime, then remove only bootstrap.lock; preserve invitation history.');
+    throw error;
+  }
+  ownsLock = true;
+  env = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
+  fileSettings = parseEnv(env);
+  configured = { ...fileSettings, ...process.env };
+  invite = (configured.ANYTYPE_INVITE_LINK ?? '').trim();
   const invitation = parseInvite();
   const attempts = invitation ? readInviteState() : {};
   if (mode !== '--validate-invite') await bootstrap(invitation, attempts);
@@ -173,4 +183,11 @@ try {
   const safe = error instanceof Error && /^(ANYTYPE_INVITE_LINK|Invitation |A previous invitation |Unable to |Anytype setup API|Anytype did not)/.test(error.message);
   console.error(safe ? error.message : 'Anytype bootstrap failed; check private runtime configuration and network availability.');
   process.exitCode = 1;
+} finally {
+  if (ownsLock) {
+    try { fs.rmdirSync(lockPath); } catch {
+      console.error('Unable to release bootstrap lock; stop all services and setup/CLI processes using this runtime before removing only bootstrap.lock.');
+      process.exitCode = 1;
+    }
+  }
 }

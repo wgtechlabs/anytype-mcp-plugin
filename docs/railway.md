@@ -12,18 +12,23 @@ The official CLI does not offer a local-only network flag. Its bot uses encrypte
 
 ## Local container check
 
-With Docker running and distinct `MCP_TOKEN`/`OWNER_TOKEN` values in the root `.env`:
+With Docker running, create a dedicated Compose environment file from the repository root. The existing helper generates distinct gateway tokens without copying native settings:
 
 ```sh
-docker compose build
-docker compose up -d
+mkdir -p .local/compose
+(cd .local/compose && node ../../scripts/setup-gateway.mjs)
+docker compose --env-file .local/compose/.env build
+docker compose --env-file .local/compose/.env up -d
 curl --fail http://127.0.0.1:31014/healthz
-docker compose stop
+docker compose --env-file .local/compose/.env logs --tail=50
+docker compose --env-file .local/compose/.env stop
 ```
+
+Use this `--env-file` option for subsequent Compose commands. The root `.env` belongs to the native bot and may contain its automatically generated sandbox ID; do not reuse it for the separate container bot. Keep `.local/compose/.env` private and do not copy the native API key or space permissions into it. Explicit `ANYTYPE_ALLOWED_SPACES` IDs must be approved for and accessible to the container bot; an explicitly empty value still denies all space access.
 
 Compose maps only `127.0.0.1:31014` to the container gateway. Its separate named volume and bot do not reuse native `.local` data. Loopback HTTP is permitted for local development; production requires HTTPS. Do not run `docker compose down -v` unless intentionally deleting this test identity and data.
 
-To test invitation bootstrap with this local build, privately set `ANYTYPE_INVITE_LINK` in root `.env` before starting Compose. Quote the value to preserve a web invite's `#key` fragment. An absent or blank invitation uses the default sandbox path when no existing allowlist is configured.
+To test invitation bootstrap with this local build, privately set `ANYTYPE_INVITE_LINK` in `.local/compose/.env` before starting Compose. Quote the value to preserve a web invite's `#key` fragment. Leave `ANYTYPE_ALLOWED_SPACES` absent for automatic selection of the invitation target. An absent or blank invitation uses the default sandbox path when no existing allowlist is configured.
 
 Compose explicitly sets `ALLOW_INSECURE_HTTP=true` because the process binds inside the container while Docker restricts the published port to host loopback. Never set this exception on Railway or another public deployment.
 
