@@ -64,3 +64,89 @@ test('Anytype setup fills an empty API key and preserves rotated keys and denied
     assert.equal(statSync(file).mode & 0o777, 0o600);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+for (const scenario of [
+  { name: 'creates a sandbox and welcome note', spaceExists: false, noteExists: false },
+  { name: 'reuses the sandbox and creates its missing welcome note', spaceExists: true, noteExists: false },
+  { name: 'reuses the sandbox and existing welcome note', spaceExists: true, noteExists: true },
+]) {
+  test(`Anytype setup ${scenario.name} without an invite or allowlist`, () => {
+    const dir = mkdtempSync(join(tmpdir(), 'anytype-sandbox-'));
+    const file = join(dir, '.env');
+    const stateFile = join(dir, 'mock-api.json');
+    const hookFile = join(dir, 'fetch-hook.mjs');
+    const env = { ...process.env };
+    for (const key of Object.keys(env)) {
+      if (key.startsWith('ANYTYPE_') || key === 'READ_ONLY' || key === 'NODE_OPTIONS') delete env[key];
+    }
+    try {
+      mkdirSync(join(dir, 'secrets'));
+      writeFileSync(join(dir, 'secrets/api-key.txt'), 'sandbox-test-key');
+      writeFileSync(stateFile, JSON.stringify({ ...scenario, calls: [] }));
+      writeFileSync(hookFile, `
+        import assert from 'node:assert/strict';
+        import { readFileSync, writeFileSync } from 'node:fs';
+        globalThis.fetch = async (url, options) => {
+          const state = JSON.parse(readFileSync(process.env.TEST_STATE_FILE, 'utf8'));
+          const parsed = new URL(url);
+          assert.equal(parsed.origin, 'http://127.0.0.1:31012');
+          assert.equal(options.headers.Authorization, 'Bearer sandbox-test-key');
+          const request = options.method + ' ' + parsed.pathname;
+          const body = options.body ? JSON.parse(options.body) : undefined;
+          const space = { id: 'sandbox-test.space', name: 'Anytype MCP Sandbox' };
+          const note = { id: 'welcome-test.object', name: 'MCP welcome note' };
+          let result;
+          switch (request) {
+            case 'GET /v1/spaces':
+              result = { data: [{ id: 'unrelated.space', name: 'Unrelated space' }, ...(state.spaceExists ? [space] : [])] };
+              break;
+            case 'POST /v1/spaces':
+              assert.equal(state.spaceExists, false, 'Do not create a duplicate sandbox');
+              assert.equal(body.name, space.name);
+              state.spaceExists = true;
+              result = { space };
+              break;
+            case 'POST /v1/spaces/sandbox-test.space/search':
+              assert.equal(state.spaceExists, true);
+              assert.equal(body.query, note.name);
+              result = { data: state.noteExists ? [note] : [] };
+              break;
+            case 'POST /v1/spaces/sandbox-test.space/objects':
+              assert.equal(state.spaceExists, true);
+              assert.equal(state.noteExists, false, 'Do not create a duplicate welcome note');
+              assert.equal(body.name, note.name);
+              assert.equal(body.type_key, 'page');
+              assert(body.body.length > 0);
+              state.noteExists = true;
+              result = { object: note };
+              break;
+            default: throw Error('Unexpected request: ' + request);
+          }
+          state.calls.push(request);
+          writeFileSync(process.env.TEST_STATE_FILE, JSON.stringify(state));
+          return new Response(JSON.stringify(result), { status: 200 });
+        };
+      `);
+      const run = () => execFileSync(process.execPath, ['--import', hookFile, resolve('scripts/bootstrap-anytype.mjs'), dir, file], {
+        env: { ...env, TEST_STATE_FILE: stateFile }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      assert(!run().includes('sandbox-test-key'));
+      const initialized = readFileSync(file, 'utf8');
+      assert.deepEqual(parseEnv(initialized), {
+        ANYTYPE_API_URL: 'http://127.0.0.1:31012', ANYTYPE_API_KEY: 'sandbox-test-key',
+        READ_ONLY: 'true', ANYTYPE_ALLOWED_SPACES: 'sandbox-test.space',
+      });
+      assert.equal(statSync(file).mode & 0o777, 0o600);
+      const expectedCalls = [
+        'GET /v1/spaces',
+        ...(scenario.spaceExists ? [] : ['POST /v1/spaces']),
+        'POST /v1/spaces/sandbox-test.space/search',
+        ...(scenario.noteExists ? [] : ['POST /v1/spaces/sandbox-test.space/objects']),
+      ];
+      assert.deepEqual(JSON.parse(readFileSync(stateFile, 'utf8')).calls, expectedCalls);
+      run();
+      assert.equal(readFileSync(file, 'utf8'), initialized);
+      assert.deepEqual(JSON.parse(readFileSync(stateFile, 'utf8')).calls, [...expectedCalls, 'GET /v1/spaces']);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+}

@@ -8,10 +8,19 @@ import { spawnSync } from 'node:child_process';
 import { parseEnv } from 'node:util';
 
 const bootstrap = resolve('scripts/bootstrap-anytype.mjs');
-const invite = 'https://invite.example.test/bafy-fixture#private-invite-key';
+const cid = 'bafybeia' + 'a'.repeat(51);
+const nextCid = 'bafybeia' + 'b'.repeat(50) + 'a';
+const invite = `https://invite.example.test/${cid}#private-invite-key`;
 const apiKey = 'private-fixture-api-key';
 const target = 'bafy-invited-fixture.space';
 const privateNames = ['Private Fixture Space', 'Private Fixture Owner', 'private-provider-error'];
+const aliases = [
+  `https://invite.example.test/${cid}?ignored=changed#private-invite-key`,
+  `http://another.example.test/invite/${cid}///#private-invite-key`,
+  `https://invite.example.test/prefix%2F${cid}#private%2Dinvite%2Dkey`,
+  `anytype://invite/?cid=${cid}&key=private-invite-key`,
+  `anytype://invite/?ignored=changed&key=private%2Dinvite%2Dkey&cid=%62${cid.slice(1)}`,
+];
 
 function fixture(t: TestContext) {
   const root = mkdtempSync(join(tmpdir(), 'anytype-invite-'));
@@ -43,6 +52,8 @@ function fixture(t: TestContext) {
     fs.appendFileSync(process.env.TEST_JOIN_LOG, 'attempt\\n');
     const args = process.argv.slice(2);
     if (args.slice(0, 3).join(' ') !== '--no-update-check space join') process.exit(2);
+    const expected = 'anytype://invite/?' + new URLSearchParams({ cid: process.env.TEST_CID, key: process.env.TEST_KEY });
+    if (args.at(-1) !== expected) process.exit(2);
     console.log("Joining space 'Private Fixture Space' created by Private Fixture Owner...");
     // Untrusted names may contain a line resembling a successful join.
     console.log("✓ Successfully sent join request to space 'decoy.space'");
@@ -67,6 +78,7 @@ function fixture(t: TestContext) {
         ...baseEnv, PATH: dirname(process.execPath) + ':' + (baseEnv.PATH ?? ''),
         ANYTYPE_BINARY: binary, ANYTYPE_INVITE_LINK: invite,
         TEST_FETCH_LOG: fetchLog, TEST_JOIN_LOG: joinLog,
+        TEST_CID: cid, TEST_KEY: 'private-invite-key',
         TEST_TARGET: target, TEST_SPACE_STATUS: '200', ...extra,
       },
     });
@@ -86,10 +98,18 @@ function fixture(t: TestContext) {
 
 test('invite preflight accepts supported complete URLs and rejects invalid input without side effects', t => {
   const f = fixture(t);
-  for (const link of [invite, 'http://invite.example.test/path/cid#key', 'anytype://invite/?cid=cid&key=key']) {
+  for (const link of [invite, ...aliases]) {
     assert.equal(f.run({ ANYTYPE_INVITE_LINK: link }, true).status, 0);
   }
-  for (const link of ['not-a-url', 'https://invite.example.test/cid', 'https://invite.example.test/#key', 'file:///cid#key', 'https://user:password@invite.example.test/cid#key', 'anytype://invite/?cid=cid', invite + ' bad']) {
+  for (const link of [
+    'not-a-url', 'https://invite.example.test/cid', 'https://invite.example.test/#key',
+    `file:///${cid}#key`, `https://user:password@invite.example.test/${cid}#key`,
+    `anytype://invite/?cid=${cid}`, invite + ' bad',
+    `https:invite.example.test/${cid}#key`, `https://invite.example.test/${cid}#%ZZ`,
+    `anytype://invite/?cid=%ZZ&cid=${cid}&key=key`, `anytype://invite/?cid=${cid};ignored&key=key`,
+    `https://invite.example.test/${cid.toUpperCase()}#key`,
+    `https://invite.example.test/${cid.slice(0, -1)}b#key`,
+  ]) {
     const result = f.run({ ANYTYPE_INVITE_LINK: link }, true);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /complete Anytype space invitation URL/);
@@ -98,6 +118,15 @@ test('invite preflight accepts supported complete URLs and rejects invalid input
   assert.deepEqual(f.calls(), []);
   assert.equal(existsSync(f.envFile), false);
   assert.equal(existsSync(f.stateFile), false);
+});
+
+test('each supported URL spelling submits the same canonical invitation to the CLI', t => {
+  for (const link of [invite, ...aliases]) {
+    const f = fixture(t);
+    const result = f.run({ ANYTYPE_INVITE_LINK: link });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(f.attempts(), 1);
+  }
 });
 
 test('fresh invitation selects its exact resolved space without creating sandbox data', t => {
@@ -148,9 +177,9 @@ test('explicit environment and file space permissions remain authoritative, incl
 test('managed permissions follow a replacement invite and remain intact when the invite is removed', t => {
   const f = fixture(t);
   assert.equal(f.run().status, 0);
-  const replacement = 'anytype://invite/?cid=next-fixture&key=next-fixture-key';
+  const replacement = `anytype://invite/?cid=${nextCid}&key=next-fixture-key`;
   const nextSpace = 'bafy-next-fixture.space';
-  assert.equal(f.run({ ANYTYPE_INVITE_LINK: replacement, TEST_TARGET: nextSpace }).status, 0);
+  assert.equal(f.run({ ANYTYPE_INVITE_LINK: replacement, TEST_TARGET: nextSpace, TEST_CID: nextCid, TEST_KEY: 'next-fixture-key' }).status, 0);
   assert.equal(f.settings().ANYTYPE_ALLOWED_SPACES, nextSpace);
   assert.equal(f.attempts(), 2);
   assert(!readFileSync(f.stateFile, 'utf8').includes(replacement));
@@ -178,7 +207,8 @@ test('failed or unverifiable CLI results fail closed and are not retried automat
 
 test('a recorded uncertain attempt is preserved without submitting another join', t => {
   const f = fixture(t);
-  writeFileSync(f.stateFile, JSON.stringify({ attempts: { [createHash('sha256').update(invite).digest('hex')]: null } }), { mode: 0o600 });
+  const fingerprint = createHash('sha256').update(JSON.stringify([cid, 'private-invite-key'])).digest('hex');
+  writeFileSync(f.stateFile, JSON.stringify({ version: 2, attempts: { [fingerprint]: null } }), { mode: 0o600 });
   const result = f.run();
   assert.equal(result.status, 1);
   assert.match(result.stderr, /uncertain outcome/);
@@ -186,11 +216,54 @@ test('a recorded uncertain attempt is preserved without submitting another join'
   assert.equal(existsSync(f.envFile), false);
 });
 
+test('equivalent invitation URLs share resolved and uncertain attempts', t => {
+  for (const mode of ['success', 'failure', 'malformed']) {
+    const f = fixture(t);
+    const expectedStatus = mode === 'success' ? 0 : 1;
+    assert.equal(f.run({ TEST_JOIN_MODE: mode }).status, expectedStatus);
+    const state = readFileSync(f.stateFile, 'utf8');
+    for (const alias of aliases) {
+      const result = f.run({ ANYTYPE_INVITE_LINK: alias });
+      assert.equal(result.status, expectedStatus, result.stderr);
+      if (mode === 'success') assert.equal(f.settings().ANYTYPE_ALLOWED_SPACES, target);
+      else assert.match(result.stderr, /uncertain outcome/);
+      assert.equal(f.attempts(), 1, 'Formatting an existing invitation must not resubmit its join');
+      assert.equal(readFileSync(f.stateFile, 'utf8'), state);
+    }
+    assert.equal(f.run({ ANYTYPE_INVITE_LINK: `anytype://invite/?cid=${cid}&key=next-fixture-key`, TEST_KEY: 'next-fixture-key' }).status, 0);
+    assert.equal(f.attempts(), 2, 'A genuinely new invitation key permits a new attempt');
+  }
+});
+
+test('legacy raw-link history blocks replay without rewriting history or saved permissions', t => {
+  for (const outcome of [null, target]) {
+    const f = fixture(t);
+    const legacy = JSON.stringify({ attempts: { [createHash('sha256').update(invite).digest('hex')]: outcome } });
+    writeFileSync(f.stateFile, legacy, { mode: 0o600 });
+    writeFileSync(f.envFile, 'ANYTYPE_ALLOWED_SPACES="existing.space"\nREAD_ONLY=true\n', { mode: 0o600 });
+    const config = readFileSync(f.envFile, 'utf8');
+    for (const link of [invite, ...aliases]) {
+      for (const preflight of [true, false]) {
+        const result = f.run({ ANYTYPE_INVITE_LINK: link }, preflight);
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /Invitation history uses an older format/);
+        assert.equal(readFileSync(f.stateFile, 'utf8'), legacy);
+        assert.equal(readFileSync(f.envFile, 'utf8'), config);
+      }
+    }
+    assert.equal(f.attempts(), 0);
+    assert.deepEqual(f.calls(), [], 'Reject unsafe history before starting or contacting Anytype');
+    assert.equal(f.run({ ANYTYPE_INVITE_LINK: '' }).status, 0);
+    assert.equal(f.settings().ANYTYPE_ALLOWED_SPACES, 'existing.space');
+    assert.equal(readFileSync(f.stateFile, 'utf8'), legacy);
+  }
+});
+
 test('restoring an older invitation never repeats its resolved or uncertain attempt', t => {
   for (const mode of ['success', 'failure']) {
     const f = fixture(t);
     assert.equal(f.run({ TEST_JOIN_MODE: mode }).status, mode === 'success' ? 0 : 1);
-    assert.equal(f.run({ ANYTYPE_INVITE_LINK: 'anytype://invite/?cid=next-fixture&key=next-fixture-key', TEST_TARGET: 'next.space' }).status, 0);
+    assert.equal(f.run({ ANYTYPE_INVITE_LINK: `anytype://invite/?cid=${nextCid}&key=next-fixture-key`, TEST_TARGET: 'next.space', TEST_CID: nextCid, TEST_KEY: 'next-fixture-key' }).status, 0);
     const restored = f.run();
     assert.equal(restored.status, mode === 'success' ? 0 : 1);
     assert.equal(f.attempts(), 2, 'An invitation change must not erase earlier attempts');

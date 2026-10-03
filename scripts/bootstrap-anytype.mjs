@@ -13,15 +13,30 @@ const fileSettings = parseEnv(env);
 const configured = { ...fileSettings, ...process.env };
 const invite = (configured.ANYTYPE_INVITE_LINK ?? '').trim();
 
-function validateInvite() {
+function parseInvite() {
   if (!invite) return;
-  const message = 'ANYTYPE_INVITE_LINK must be a complete Anytype space invitation URL.';
-  if (invite.length > 4096 || /[\x00-\x20\x7f]/.test(invite)) throw Error(message);
-  let url;
-  try { url = new URL(invite); } catch { throw Error(message); }
-  const web = ['https:', 'http:'].includes(url.protocol) && url.hostname && url.pathname.split('/').some(Boolean) && url.hash.length > 1;
-  const app = url.protocol === 'anytype:' && (url.hostname === 'invite' || url.pathname.startsWith('/invite')) && url.searchParams.get('cid') && url.searchParams.get('key');
-  if (url.username || url.password || !(web || app)) throw Error(message);
+  const message = 'ANYTYPE_INVITE_LINK must be a complete Anytype space invitation URL. Use the original Anytype-generated invitation.';
+  if (invite.length > 4096 || /[\x00-\x20\x7f\\]/.test(invite) || !/^[a-z]+:\/\//i.test(invite)) throw Error(message);
+  try {
+    const url = new URL(invite);
+    // Reject malformed escapes rather than relying on the URL parser's forgiving query decoding.
+    decodeURIComponent(invite);
+    const path = decodeURIComponent(url.pathname);
+    let cid, key;
+    if (['https:', 'http:'].includes(url.protocol) && url.hostname) {
+      // The pinned CLI decodes the entire path before selecting its last nonempty segment.
+      cid = path.replace(/^\/+|\/+$/g, '').split('/').at(-1);
+      key = decodeURIComponent(url.hash.slice(1));
+    } else if (url.protocol === 'anytype:' && (url.host === 'invite' || path.startsWith('/invite')) && !url.search.includes(';')) {
+      cid = url.searchParams.get('cid');
+      key = url.searchParams.get('key');
+    }
+    if (url.username || url.password || !cid || !key || /[\x00-\x20\x7f]/.test(cid + key)) throw Error(message);
+    // Pinned Anytype generates CIDv1 dag-pb SHA-256 in lowercase, unpadded base32.
+    // Restrict its encoding (including padding bits) so alternate CID spellings cannot bypass history.
+    if (!/^bafybei[a-h][a-z2-7]{50}[aeimquy4]$/.test(cid)) throw Error(message);
+    return { cid, key };
+  } catch { throw Error(message); }
 }
 
 function saveConfig(values) {
@@ -44,18 +59,22 @@ function readInviteState() {
     !/^[a-f0-9]{64}$/.test(fingerprint) || (spaceId !== null && (typeof spaceId !== 'string' || !spaceIdPattern.test(spaceId))))) {
     throw Error('Invitation state is invalid; restore the private runtime backup.');
   }
+  if (state.version === undefined) {
+    // Unreleased prototypes stored raw-URL hashes, which cannot establish whether an alias was tried.
+    throw Error('Invitation history uses an older format; preserve it. Remove ANYTYPE_INVITE_LINK to retain configured access, or use a fresh runtime and a newly generated invitation.');
+  }
+  if (state.version !== 2) throw Error('Invitation state version is unsupported; restore the private runtime backup or use its matching software version.');
   return state.attempts;
 }
 
 function saveInviteState(attempts) {
-  fs.writeFileSync(statePath + '.tmp', JSON.stringify({ attempts }) + '\n', { mode: 0o600 });
+  fs.writeFileSync(statePath + '.tmp', JSON.stringify({ version: 2, attempts }) + '\n', { mode: 0o600 });
   fs.chmodSync(statePath + '.tmp', 0o600);
   fs.renameSync(statePath + '.tmp', statePath);
 }
 
-function invitedSpace() {
-  const fingerprint = createHash('sha256').update(invite).digest('hex');
-  const attempts = readInviteState();
+function invitedSpace(invitation, attempts) {
+  const fingerprint = createHash('sha256').update(JSON.stringify([invitation.cid, invitation.key])).digest('hex');
   if (Object.hasOwn(attempts, fingerprint)) {
     if (attempts[fingerprint] === null) throw Error('A previous invitation attempt has an uncertain outcome. Supply a newly generated invitation to retry; no duplicate request was sent.');
     return attempts[fingerprint];
@@ -65,7 +84,9 @@ function invitedSpace() {
   saveInviteState(attempts);
   let output;
   try {
-    output = execFileSync(join(import.meta.dirname, 'anytype.sh'), ['cli', '--no-update-check', 'space', 'join', invite], {
+    // Submit the same parsed identity that was fingerprinted, independent of URL spelling.
+    const canonicalUrl = 'anytype://invite/?' + new URLSearchParams(invitation);
+    output = execFileSync(join(import.meta.dirname, 'anytype.sh'), ['cli', '--no-update-check', 'space', 'join', canonicalUrl], {
       encoding: 'utf8', timeout: 60000, maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, ANYTYPE_RUNTIME_DIR: root },
     });
@@ -92,7 +113,7 @@ function configureInvitedSpace(spaceId) {
   env += (env.endsWith('\n') || !env ? '' : '\n') + managedPrefix + spaceId + '\nANYTYPE_ALLOWED_SPACES=' + JSON.stringify(spaceId) + '\n';
 }
 
-async function bootstrap() {
+async function bootstrap(invitation, attempts) {
   const key = configured.ANYTYPE_API_KEY || fs.readFileSync(join(root, 'secrets/api-key.txt'), 'utf8').trim();
   const headers = { Authorization: 'Bearer ' + key, 'Anytype-Version': '2025-11-08', 'Content-Type': 'application/json' };
   async function api(path, body) {
@@ -111,8 +132,8 @@ async function bootstrap() {
     }
   }
   const defaults = { ANYTYPE_API_URL: 'http://127.0.0.1:31012', ANYTYPE_API_KEY: key, READ_ONLY: 'true' };
-  if (invite) {
-    const spaceId = invitedSpace();
+  if (invitation) {
+    const spaceId = invitedSpace(invitation, attempts);
     const response = await fetch('http://127.0.0.1:31012/v1/spaces/' + encodeURIComponent(spaceId), {
       headers, signal: AbortSignal.timeout(60000), redirect: 'error',
     });
@@ -144,8 +165,9 @@ async function bootstrap() {
 }
 
 try {
-  validateInvite();
-  if (mode !== '--validate-invite') await bootstrap();
+  const invitation = parseInvite();
+  const attempts = invitation ? readInviteState() : {};
+  if (mode !== '--validate-invite') await bootstrap(invitation, attempts);
 } catch (error) {
   // Never print exception objects/stacks: network and subprocess errors may include credentials.
   const safe = error instanceof Error && /^(ANYTYPE_INVITE_LINK|Invitation |A previous invitation |Unable to |Anytype setup API|Anytype did not)/.test(error.message);
