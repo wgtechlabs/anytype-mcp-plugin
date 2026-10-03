@@ -8,7 +8,7 @@ Codex / ChatGPT → authenticated MCP → official Anytype MCP → Anytype CLI �
 
 ## Local quick start
 
-Requires Node.js 22.16+ and macOS or Linux. The installer downloads the checksum-verified Anytype CLI v0.4.0 into `.local/`, creates an isolated bot account, and saves an initial test note. It uses Anytype's encrypted sync network; “local” describes where this service runs, not an offline network mode.
+Requires Node.js 22.16+ and macOS or Linux. The installer downloads the checksum-verified Anytype CLI v0.4.0 into `.local/` and creates an isolated bot account. Without an invite or explicit space allowlist, it creates a sandbox and initial test note. It uses Anytype's encrypted sync network; “local” describes where this service runs, not an offline network mode.
 
 ```sh
 npm ci
@@ -30,10 +30,14 @@ Keep the bot recovery file in `.local/secrets/` backed up securely. Do not commi
 
 The bot is a separate Anytype identity. It does **not** automatically see your desktop data, and cannot sign in using a desktop recovery phrase.
 
-1. In Anytype desktop, invite the bot to the specific space you want to use.
-2. Join using `./scripts/anytype.sh cli space join '<invite-link>'`; treat the invite as a secret and avoid leaving it in shared shell history.
-3. Discover the joined space ID with `./scripts/anytype.sh cli space list`.
-4. Put only approved IDs in `ANYTYPE_ALLOWED_SPACES` in `.env` and restart the MCP service. An empty list grants no space access.
+**Invite bootstrap is unreleased and is not available in image `0.1.0`.** Use a local build containing this change, or a later verified release. The saved Railway template draft remains pinned to `0.1.0` until it is deliberately updated after that release.
+
+1. In Anytype desktop, create an invitation for the space you want the bot to access.
+2. Privately set `ANYTYPE_INVITE_LINK` in local `.env` before running setup, or in Railway service variables before deployment. Quote the value in `.env` to preserve the `#key` fragment; paste the raw full link into Railway's variable field. Never paste it into chat, Git, or shared logs.
+3. Leave `ANYTYPE_ALLOWED_SPACES` unset for automatic access to that exact target. An explicit list, including an empty value that denies all spaces, takes precedence.
+4. Start the service and approve the bot's join request in Anytype if required. While membership is pending, the gateway runs and reports “waiting for space access; owner approval may be required”. Once approval and sync complete, the target becomes accessible without restarting.
+
+The service remembers invitation fingerprints and targets privately, so restarts and configuration rollbacks do not resubmit a previous invitation. A timeout or crash during an attempt leaves an uncertain outcome; restarting does not retry it. Check membership first, then supply a newly generated invitation if a retry is needed. A successful CLI exit alone does not prove membership: if access stays unavailable, check the invitation's validity and the owner's pending requests. See [runtime details](docs/anytype-runtime.md#network-and-existing-desktop-data).
 
 For external imports, import in Anytype desktop first and invite the bot afterward. Import/export is not a stable-v1 MCP feature.
 
@@ -73,7 +77,8 @@ Copy [.env.example](.env.example) for the supported settings. Main variables:
 | Variable | Purpose |
 | --- | --- |
 | `ANYTYPE_API_KEY` | Bot's private server-side API key |
-| `ANYTYPE_ALLOWED_SPACES` | Comma-separated approved space IDs; empty denies all |
+| `ANYTYPE_INVITE_LINK` | Optional private invitation for startup join; unreleased, unavailable in `0.1.0` |
+| `ANYTYPE_ALLOWED_SPACES` | Explicit approved IDs; empty denies all. Omit for automatic invite target or sandbox access |
 | `READ_ONLY` | `true` by default; only `false` enables confirmed writes |
 | `MCP_TOKEN` | Random 32–256 character bearer token for MCP clients |
 | `OWNER_TOKEN` | Different random secret used only for OAuth sign-in |
