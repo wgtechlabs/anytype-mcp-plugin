@@ -25,8 +25,7 @@ test('gateway setup replaces empty secrets, protects the file, and preserves exi
 });
 
 test('Anytype setup fills an empty API key and preserves rotated keys and denied space access', () => {
-  const script = readFileSync(resolve('scripts/setup-anytype.sh'), 'utf8');
-  const bootstrap = script.slice(script.lastIndexOf("<<'NODE'\n") + "<<'NODE'\n".length).replace(/\nNODE\s*$/, '');
+  const script = resolve('scripts/bootstrap-anytype.mjs');
   const dir = mkdtempSync(join(tmpdir(), 'anytype-bootstrap-'));
   const file = join(dir, '.env');
   const hook = `
@@ -37,9 +36,11 @@ test('Anytype setup fills an empty API key and preserves rotated keys and denied
     };
   `;
   const env = { ...process.env };
-  for (const key of ['ANYTYPE_API_KEY', 'ANYTYPE_ALLOWED_SPACES', 'READ_ONLY']) delete env[key];
-  const run = (expected: string) => execFileSync(process.execPath, ['--input-type=module', '-', dir, file], {
-    input: hook + bootstrap, env: { ...env, TEST_EXPECTED_KEY: expected }, stdio: ['pipe', 'pipe', 'pipe'],
+  for (const key of ['ANYTYPE_API_KEY', 'ANYTYPE_ALLOWED_SPACES', 'ANYTYPE_INVITE_LINK', 'READ_ONLY']) delete env[key];
+  const hookFile = join(dir, 'fetch-hook.mjs');
+  writeFileSync(hookFile, hook);
+  const run = (expected: string) => execFileSync(process.execPath, ['--import', hookFile, script, dir, file], {
+    env: { ...env, TEST_EXPECTED_KEY: expected }, stdio: ['pipe', 'pipe', 'pipe'],
   });
   try {
     // An existing private key is supplied as the script's regular file fallback.
@@ -47,7 +48,7 @@ test('Anytype setup fills an empty API key and preserves rotated keys and denied
     const fallback = join(dir, 'secrets');
     mkdirSync(fallback);
     writeFileSync(join(fallback, 'api-key.txt'), generated);
-    writeFileSync(file, readFileSync(resolve('.env.example'), 'utf8'));
+    writeFileSync(file, readFileSync(resolve('.env.example'), 'utf8') + '\nANYTYPE_ALLOWED_SPACES=\n');
     run(generated);
     const initialized = readFileSync(file, 'utf8');
     assert.equal(parseEnv(initialized).ANYTYPE_API_KEY, generated);

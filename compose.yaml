@@ -8,6 +8,8 @@ services:
       PORT: "31013"
       MCP_TOKEN: ${MCP_TOKEN:?Set MCP_TOKEN in .env}
       OWNER_TOKEN: ${OWNER_TOKEN:?Set OWNER_TOKEN in .env}
+      ANYTYPE_INVITE_LINK: ${ANYTYPE_INVITE_LINK:-}
+      ANYTYPE_ALLOWED_SPACES:
       READ_ONLY: "true"
     ports:
       - "127.0.0.1:31014:31013"

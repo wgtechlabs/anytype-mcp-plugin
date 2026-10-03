@@ -1,10 +1,12 @@
 # Railway template preparation
 
-Deploy the prebuilt release image on Railway after it has been published to Docker Hub and GHCR. Registry publication and a live Railway deployment have not yet been verified. Codex and ChatGPT provide the interface; the container hosts the MCP gateway and headless Anytype. The repository also includes a Dockerfile and Compose configuration for local builds.
+Deploy a verified release image from Docker Hub or GHCR on Railway. Image `0.1.0` is published in both registries; a live Railway deployment has not yet been verified. Codex and ChatGPT provide the interface; the container hosts the MCP gateway and headless Anytype. The repository also includes a Dockerfile and Compose configuration for local builds.
+
+**Invite bootstrap is unreleased.** Image `0.1.0` does not support `ANYTYPE_INVITE_LINK`. The saved Railway template draft is pinned to `0.1.0`; update its image only after a release containing this feature is published and verified. Adding the variable to that older image will not join a space.
 
 ## Container architecture
 
-One container runs one pinned Anytype CLI v0.4.0 bot and one Node 22 gateway. Anytype listens only on container loopback at 31012; only the gateway port is exposed. `/data` contains the private CLI home, object data, recovery material, API key, and gateway configuration. The first start creates a dedicated sandbox and test note. Later starts reuse the volume. Startup verifies tokens before creating an account, and no secret is printed to container logs. The entrypoint initializes volume ownership as root, then runs both services as the unprivileged `node` user. Shutdown stops both processes.
+One container runs one pinned Anytype CLI v0.4.0 bot and one Node 22 gateway. Anytype listens only on container loopback at 31012; only the gateway port is exposed. `/data` contains the private CLI home, object data, recovery material, API key, gateway configuration, and invitation attempt state. Without an invite or explicit space allowlist, first start creates a dedicated sandbox and test note. Later starts reuse the volume. Startup verifies tokens before creating an account, and no secret is printed to container logs. The entrypoint initializes volume ownership as root, then runs both services as the unprivileged `node` user. Shutdown stops both processes.
 
 The official CLI does not offer a local-only network flag. Its bot uses encrypted Anytype Network sync unless a valid custom network YAML is supplied at first account creation. This is separate from the hosting location.
 
@@ -20,6 +22,8 @@ docker compose stop
 ```
 
 Compose maps only `127.0.0.1:31014` to the container gateway. Its separate named volume and bot do not reuse native `.local` data. Loopback HTTP is permitted for local development; production requires HTTPS. Do not run `docker compose down -v` unless intentionally deleting this test identity and data.
+
+To test invitation bootstrap with this local build, privately set `ANYTYPE_INVITE_LINK` in root `.env` before starting Compose. Quote the value to preserve a web invite's `#key` fragment. An absent or blank invitation uses the default sandbox path when no existing allowlist is configured.
 
 Compose explicitly sets `ALLOW_INSECURE_HTTP=true` because the process binds inside the container while Docker restricts the published port to host loopback. Never set this exception on Railway or another public deployment.
 
@@ -61,13 +65,27 @@ Configure:
 | `PUBLIC_URL` | The external HTTPS origin, or omit when `RAILWAY_PUBLIC_DOMAIN` is configured |
 | `READ_ONLY` | `true` initially |
 | `PORT` | Railway-provided port or `31013` |
-| `ANYTYPE_ALLOWED_SPACES` | Optional explicit full IDs; without it, bootstrap restricts access to its dedicated sandbox |
+| `ANYTYPE_INVITE_LINK` | Optional private invite, supplied before deployment; requires a release newer than `0.1.0` containing invite bootstrap |
+| `ANYTYPE_ALLOWED_SPACES` | Optional explicit full IDs; omit for automatic invite target or sandbox access. Explicitly empty denies all |
 | `ANYTYPE_API_VERSION` | `v1` by default |
 | `OAUTH_REDIRECT_URIS` | Exact client callback URLs when configuring OAuth clients |
 
 The entrypoint sets `HOST=0.0.0.0` for gateway reachability and derives `PUBLIC_URL=https://RAILWAY_PUBLIC_DOMAIN` when no URL is supplied. Generate a Railway HTTPS domain targeting the gateway's port. Do not create TCP proxies or public domains for Anytype ports. Railway terminates HTTPS at its edge; the application remains inside the container. The public MCP URL is `https://<domain>/mcp`.
 
 Keep the upstream `ANYTYPE_API_KEY` out of Railway template prompts and client configuration: bootstrap stores it privately in `/data/gateway.env`. Separate operator and MCP secrets stay in Railway Variables. In the template editor, select the verified Docker Hub or GHCR image, generate the two secrets independently, add the `/data` volume, copy the service settings above, and enable public networking. Do not add a Deploy button until an actual template has been published and its URL verified.
+
+## Connect an existing space
+
+After selecting a verified release with invite bootstrap:
+
+1. Create an invitation in Anytype for the specific space the bot should access.
+2. In Railway's deployment variables, privately enter the complete link as `ANYTYPE_INVITE_LINK`. Leave `ANYTYPE_ALLOWED_SPACES` absent to select only the invitation's target automatically. Do not publish an invitation as a template default.
+3. Deploy, then check the space owner's pending membership requests in Anytype and approve the bot if required.
+4. Connect the MCP client and read the space. Pending membership keeps the gateway running with “waiting for space access; owner approval may be required”; approval and sync make the target available without another deployment.
+
+The normal join path needs no terminal commands. The invite may be a web URL ending in `invite/<cid>#<key>` or `anytype://invite/?cid=...&key=...`. Keep its key private. CLI success alone is not proof of membership; if the target stays inaccessible, check owner approval and invitation validity.
+
+Invitation fingerprints are persisted so restarts and configuration rollbacks do not resubmit a previous invitation. An interrupted or timed-out attempt is not automatically repeated on restart: check membership, then provide a newly generated invitation if another attempt is needed. Replacing the invitation updates an automatically managed invite allowlist to its new target. An explicit allowlist always wins, including an empty value; update your override if it excludes the intended space. Without an invitation or existing allowlist, bootstrap uses the sandbox default. Removing an invitation does not revoke existing bot membership. See [runtime details](anytype-runtime.md#network-and-existing-desktop-data).
 
 ## Storage, upgrades, and recovery
 

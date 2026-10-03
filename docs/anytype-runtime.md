@@ -1,6 +1,6 @@
 # Anytype runtime
 
-`scripts/setup-anytype.sh` downloads the official Anytype CLI **v0.4.0**, verifies the release archive against its pinned SHA-256, starts it on loopback, creates a dedicated bot, and initializes an **Anytype MCP Sandbox** space with a welcome note. Run from the repository after `npm ci`:
+`scripts/setup-anytype.sh` downloads the official Anytype CLI **v0.4.0**, verifies the release archive against its pinned SHA-256, starts it on loopback, and creates a dedicated bot. With no invite or explicit allowlist, it initializes an **Anytype MCP Sandbox** space with a welcome note. Run from the repository after `npm ci`:
 
 ```sh
 scripts/setup-anytype.sh
@@ -9,7 +9,7 @@ scripts/anytype.sh stop
 scripts/anytype.sh start
 ```
 
-The API is `http://127.0.0.1:31012`. Ports 31010–31012 must be free; startup refuses to disturb an existing service. The desktop app normally uses 31007–31009. No system service is installed. `.local` contains the downloaded executable, private home, data, PID and logs. `.env` receives the gateway's API key and approved sandbox ID, with read-only mode enabled. Files containing secrets are created with mode 600; directories are private. Do not commit, paste, or expose these files.
+The API is `http://127.0.0.1:31012`. Ports 31010–31012 must be free; startup refuses to disturb an existing service. The desktop app normally uses 31007–31009. No system service is installed. `.local` contains the downloaded executable, private home, data, PID and logs. `.env` receives the gateway's API key and automatically selected space ID unless an explicit allowlist is configured, with read-only mode enabled by default. Files containing secrets are created with mode 600; directories are private. Do not commit, paste, or expose these files.
 
 The wrapper passes a separate home and `DATA_PATH` only to the child CLI. On macOS, the upstream Keychain service name is shared across instances. A narrow `sandbox-exec` rule denies `/usr/bin/security` so upstream falls back to the isolated configuration file; the user's normal Keychain and Anytype configuration are untouched. Linux disables desktop D-Bus keyring discovery for the same purpose. Use `scripts/anytype.sh cli ...` for account and space commands so the isolation remains in effect.
 
@@ -17,14 +17,15 @@ The wrapper passes a separate home and `DATA_PATH` only to the child CLI. On mac
 
 CLI v0.4.0 supports the default Anytype Network and a custom network configuration; it does **not** provide a local-only network flag. “Local” here describes where the service and storage run. The bot can participate in encrypted Anytype Network sync. For a self-hosted Any-Sync network, set `ANYTYPE_NETWORK_CONFIG` to its YAML path **before the first account creation**. Desktop and bot must use the same network.
 
-Desktop recovery mnemonics cannot log in to the bot CLI. The bot is a separate identity. Invite it only to approved spaces:
+Desktop recovery mnemonics cannot log in to the bot CLI. The bot is a separate identity. To connect an existing space, create an invitation in Anytype and privately set `ANYTYPE_INVITE_LINK` in `.env` before local setup, or in service variables before container startup. **This bootstrap behavior is unreleased and unavailable in image `0.1.0`.** Existing deployments and the saved Railway template draft need a newer verified release containing it.
 
-```sh
-scripts/anytype.sh cli space join '<invite-link>'
-scripts/anytype.sh cli space list
-```
+Accepted links include `https://<host>/invite/<cid>#<key>` and `anytype://invite/?cid=<cid>&key=<key>`. The pinned CLI also accepts the HTTP web form. Quote the value in `.env` to preserve the `#key` fragment; use the raw complete link in Railway's variable field. An invite grants access: never commit it, paste it into chat, or put it in shared logs or shell history. Normal Railway setup uses a private variable rather than a terminal command.
 
-An invite link grants access: enter it privately, and avoid shared shell history. Update `ANYTYPE_ALLOWED_SPACES` in `.env` with exact full space IDs, then restart the gateway. Desktop owners can remove the bot to revoke membership. Joining and cross-device synchronization depend on network availability and have not been verified against the user's desktop vault.
+On startup, the bot attempts the invitation once per fingerprint. Its private attempt history at `secrets/invite-state.json` contains only fingerprints and resolved targets (or an uncertain outcome marker); raw invite output is not retained. This history survives configuration rollbacks and is included in runtime backups. When no explicit `ANYTYPE_ALLOWED_SPACES` is set, bootstrap allowlists the exact invitation target. Replacing an invitation updates this automatically managed invite allowlist. An explicit allowlist remains authoritative, including an explicitly empty value that denies all spaces. Check existing overrides when moving an older sandbox deployment to an invited space. With no invite or existing allowlist, bootstrap uses the sandbox default. Removing an invitation does not revoke existing bot membership or clear an already saved allowlist.
+
+Membership can require the space owner's approval. The gateway starts while access is pending and reports “waiting for space access; owner approval may be required”. Check the owner's pending requests in Anytype. After approval and sync, the target becomes accessible without restarting the gateway. A successful join command exit is not membership proof: the pinned CLI can mask a rejected join, so check invitation validity and owner approval if access remains absent.
+
+A timeout or crash during a join leaves an attempt marker because the outcome is uncertain. Restarting refuses to repeat that invitation. Inspect membership first; if another attempt is necessary, generate a new invitation and replace `ANYTYPE_INVITE_LINK` before running setup or restarting the container. Do not clear the marker to force a blind retry. Desktop owners can remove the bot to revoke membership. Joining and cross-device synchronization depend on network availability and have not been verified against the user's desktop vault.
 
 Native CLI import/export is unavailable. Import existing material using Anytype desktop, then invite the bot to that space. Official exports do not include chat/discussion messages and can lose member-valued relationships. Do not copy the live desktop database into the bot directory.
 

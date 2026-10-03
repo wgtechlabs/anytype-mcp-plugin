@@ -38,6 +38,7 @@ import {execFileSync} from 'node:child_process';
 if(!/^anytype-cli v0\.4\.0(?:\s|$)/m.test(execFileSync(process.argv[2],['version'],{encoding:'utf8'}))) throw Error('Expected pinned Anytype CLI v0.4.0; refuse to reuse another version.');
 NODE
 if [[ "${1:-}" == --download-only ]]; then exit 0; fi
+node "$project_dir/scripts/bootstrap-anytype.mjs" "$runtime_dir" "${ANYTYPE_ENV_FILE:-$project_dir/.env}" --validate-invite
 echo 'CLI v0.4.0 has no local-only network mode; the dedicated bot uses encrypted Anytype Network sync unless ANYTYPE_NETWORK_CONFIG is set.'
 "$project_dir/scripts/anytype.sh" start
 if ! node --input-type=module - "$runtime_dir/home/.anytype/config.json" <<'NODE'
@@ -63,42 +64,4 @@ fs.writeFileSync(`${dir}/api-key.txt`,key,{mode:0o600});
 fs.rmSync(`${dir}/api-key-output.txt`);
 NODE
 fi
-node --input-type=module - "$runtime_dir" "${ANYTYPE_ENV_FILE:-$project_dir/.env}" <<'NODE'
-import fs from 'node:fs';
-import {parseEnv} from 'node:util';
-const [root,envPath]=process.argv.slice(2);
-let env=fs.existsSync(envPath)?fs.readFileSync(envPath,'utf8'):'';
-const configured={...parseEnv(env),...process.env};
-const key=configured.ANYTYPE_API_KEY||fs.readFileSync(`${root}/secrets/api-key.txt`,'utf8').trim();
-function saveMissing(values) {
- for (const [name,value] of Object.entries(values)) {
-  if(!Object.hasOwn(configured,name)||(name==='ANYTYPE_API_KEY'&&!configured[name])) env=`${env}${env.endsWith('\n')||!env?'':'\n'}${name}=${JSON.stringify(value)}\n`;
- }
- fs.writeFileSync(envPath,env,{mode:0o600});fs.chmodSync(envPath,0o600);
-}
-const headers={Authorization:`Bearer ${key}`,'Anytype-Version':'2025-11-08','Content-Type':'application/json'};
-async function api(path,body) {
- const response=await fetch(`http://127.0.0.1:31012/v1${path}`,{method:body?'POST':'GET',headers,body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(60000)});
- if (!response.ok) throw Error(`Anytype setup API returned HTTP ${response.status}; no response content logged.`);
- return response.json();
-}
-let spaces;
-for(let attempt=0;attempt<40;attempt++) {
- try {spaces=await api('/spaces');break;} catch(error) {
-  if(!(error.cause?.code==='ECONNREFUSED')||attempt===39) throw error;
-  await new Promise(resolve=>setTimeout(resolve,250));
- }
-}
-if(Object.hasOwn(configured,'ANYTYPE_ALLOWED_SPACES')) {
- saveMissing({ANYTYPE_API_URL:'http://127.0.0.1:31012',ANYTYPE_API_KEY:key,READ_ONLY:'true'});
- console.log('Verified existing Anytype API credentials; existing space permissions and read-only setting preserved.');
- process.exit(0);
-}
-let space=spaces.data?.find(s=>s.name==='Anytype MCP Sandbox');
-if (!space) {const created=await api('/spaces',{name:'Anytype MCP Sandbox',description:'Dedicated local integration test space.'});space=created.space??created;}
-if (!space.id) throw Error('Anytype did not return a space id.');
-const found=await api(`/spaces/${encodeURIComponent(space.id)}/search`,{query:'MCP welcome note'});
-if (!found.data?.some(o=>o.name==='MCP welcome note')) await api(`/spaces/${encodeURIComponent(space.id)}/objects`,{type_key:'page',name:'MCP welcome note',body:'This isolated test note verifies the local Anytype MCP connection.'});
-saveMissing({ANYTYPE_API_URL:'http://127.0.0.1:31012',ANYTYPE_API_KEY:key,ANYTYPE_ALLOWED_SPACES:space.id,READ_ONLY:'true'});
-console.log('Verified API authentication, sandbox space, and persisted test note. Gateway configuration saved privately.');
-NODE
+node "$project_dir/scripts/bootstrap-anytype.mjs" "$runtime_dir" "${ANYTYPE_ENV_FILE:-$project_dir/.env}"
